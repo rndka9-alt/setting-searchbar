@@ -27,7 +27,7 @@ export async function buildIndex(
     return [];
   }
 
-  console.log(`${TAG} requesting server-side crawl (force=${force})`);
+  console.debug(`${TAG} requesting server-side crawl (force=${force})`);
   onProgress?.(force ? 'Re-crawling settings...' : 'Loading settings index...');
 
   try {
@@ -58,8 +58,8 @@ export async function buildIndex(
 
     const allowed = requestLog.filter((r) => r.action === 'allowed').length;
     const blocked = requestLog.filter((r) => r.action === 'blocked').length;
-    console.log(`${TAG} received ${entries.length} entries (${allowed} requests allowed, ${blocked} blocked)`);
-    console.table(requestLog.filter((r) => r.action === 'blocked').slice(0, 20));
+    console.debug(`${TAG} received ${entries.length} entries (${allowed} requests allowed, ${blocked} blocked)`);
+    console.debug(`${TAG} blocked requests:`, requestLog.filter((r) => r.action === 'blocked').slice(0, 10));
 
     onProgress?.(`${entries.length} items indexed`);
     return entries;

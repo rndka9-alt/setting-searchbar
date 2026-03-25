@@ -7,12 +7,16 @@
  * Svelte DOM manipulation (no hide/inject/class toggling on existing elements).
  */
 
-import { createSearchUI, destroySearchUI } from './ui';
+import { createSearchUI, destroySearchUI, injectStyles } from './ui';
 import { installAuthCapture } from './auth-capture';
 
 // Capture risu-auth tokens from outgoing fetch requests.
 // Must run before any RisuAI code so we intercept the first API calls.
 installAuthCapture();
+
+// Inject styles early to reserve sidebar space and prevent CLS.
+// This adds padding-top to .rs-setting-cont-3 before it even renders.
+injectStyles();
 
 const SIDEBAR_SELECTOR = '.rs-setting-cont-3';
 const TAG = '[setting-searchbar]';
@@ -28,7 +32,7 @@ function tryInject() {
   injected = true;
   const ui = createSearchUI();
   sidebar.prepend(ui);
-  console.log(`${TAG} search bar prepended to sidebar`);
+  console.debug(`${TAG} search bar prepended to sidebar`);
 }
 
 function onRemoved() {
@@ -38,7 +42,7 @@ function onRemoved() {
 
   injected = false;
   destroySearchUI();
-  console.log(`${TAG} search bar removed (settings closed)`);
+  console.debug(`${TAG} search bar removed (settings closed)`);
 }
 
 function startPolling() {
@@ -57,7 +61,7 @@ function startPolling() {
 function init() {
   startPolling();
   tryInject();
-  console.log(`${TAG} initialized`);
+  console.debug(`${TAG} initialized`);
 }
 
 if (document.readyState === 'loading') {

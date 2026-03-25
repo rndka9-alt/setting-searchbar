@@ -30,9 +30,9 @@ export function installAuthCapture(): void {
     const auth = extractRisuAuth(init?.headers);
     if (auth && auth !== captured) {
       captured = auth;
-      console.log(`${TAG} captured risu-auth token`);
+      console.debug(`${TAG} captured risu-auth token`);
     }
     return original.call(window, input, init);
   };
-  console.log(`${TAG} auth capture installed`);
+  console.debug(`${TAG} auth capture installed`);
 }

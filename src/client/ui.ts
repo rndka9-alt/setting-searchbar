@@ -12,15 +12,28 @@ let flatItems: { el: HTMLElement; entry: IndexEntry }[] = [];
 
 let stylesInjected = false;
 
-function injectStyles() {
+/** Inject styles early (at script load) to reserve sidebar space and prevent CLS. */
+export function injectStyles() {
   if (stylesInjected) return;
   stylesInjected = true;
   const style = document.createElement('style');
   style.textContent = `
+    /* Reserve space in sidebar so the search bar doesn't cause layout shift */
+    .rs-setting-cont-3 {
+      padding-top: 48px;
+    }
+
     .ssb-root {
-      position: relative;
+      margin-top: -48px;
       padding: 0 0 8px;
-      flex-shrink: 0;
+      /* width: 0 makes this element contribute 0 to the parent's intrinsic
+         width calculation. min-width: 100% then stretches it to fill whatever
+         width the parent gets from its other children (the menu buttons). */
+      width: 0;
+      min-width: 100%;
+      overflow: hidden;
+      border-bottom: 1px solid var(--risu-theme-darkborderc);
+      margin-bottom: 4px;
     }
 
     .ssb-highlight {
@@ -38,8 +51,11 @@ function injectStyles() {
     }
 
     .ssb-results {
-      max-height: 60vh; overflow-y: auto;
+      max-height: 60vh;
+      overflow: auto;
+      scrollbar-width: none;
     }
+    .ssb-results::-webkit-scrollbar { display: none; }
 
     .ssb-group-label {
       padding: 8px 12px 2px;
@@ -47,6 +63,8 @@ function injectStyles() {
       color: var(--risu-theme-textcolor2);
       text-transform: uppercase;
       letter-spacing: 0.05em;
+      position: sticky;
+      left: 0;
     }
 
     .ssb-item {
@@ -56,6 +74,7 @@ function injectStyles() {
       cursor: pointer;
       display: flex; align-items: baseline; gap: 8px;
       transition: background-color 0.1s;
+      white-space: nowrap;
     }
     .ssb-item:hover,
     .ssb-item-selected {
@@ -70,6 +89,12 @@ function injectStyles() {
     .ssb-more {
       padding: 2px 12px 6px 20px; font-size: 11px;
       color: var(--risu-theme-textcolor2);
+    }
+    .ssb-more-toggle {
+      cursor: pointer;
+    }
+    .ssb-more-toggle:hover {
+      color: var(--risu-theme-textcolor);
     }
 
     .ssb-status {
@@ -199,10 +224,59 @@ function renderResults(groups: MenuGroup[]) {
     }
 
     if (group.entries.length > MAX_PER_GROUP) {
-      const more = document.createElement('div');
-      more.className = 'ssb-more text-textcolor2';
-      more.textContent = `+${group.entries.length - MAX_PER_GROUP} more`;
-      resultsEl.appendChild(more);
+      const hiddenEntries = group.entries.slice(MAX_PER_GROUP);
+      const hiddenContainer = document.createElement('div');
+      hiddenContainer.style.display = 'none';
+
+      for (const entry of hiddenEntries) {
+        const item = document.createElement('div');
+        item.className = 'ssb-item text-textcolor';
+
+        const name = document.createElement('span');
+        name.textContent = entry.displayText;
+        item.appendChild(name);
+
+        if (entry.subLabel) {
+          const sub = document.createElement('span');
+          sub.className = 'ssb-item-sub';
+          sub.textContent = entry.subLabel;
+          item.appendChild(sub);
+        }
+
+        item.addEventListener('click', () => {
+          navigateAndHighlight(entry);
+        });
+
+        hiddenContainer.appendChild(item);
+        flatItems.push({ el: item, entry });
+      }
+
+      // Bottom collapse button (inside hidden container, only visible when expanded)
+      const bottomCollapse = document.createElement('div');
+      bottomCollapse.className = 'ssb-more ssb-more-toggle text-textcolor2';
+      bottomCollapse.textContent = '- collapse';
+      hiddenContainer.appendChild(bottomCollapse);
+
+      // Top toggle button — placed BEFORE hiddenContainer so it sits
+      // between the visible items and the expanded hidden items.
+      const topToggle = document.createElement('div');
+      topToggle.className = 'ssb-more ssb-more-toggle text-textcolor2';
+      topToggle.textContent = `+${hiddenEntries.length} more`;
+      resultsEl.appendChild(topToggle);
+      resultsEl.appendChild(hiddenContainer);
+
+      const toggle = (expanded: boolean) => {
+        hiddenContainer.style.display = expanded ? 'none' : 'block';
+        topToggle.textContent = expanded
+          ? `+${hiddenEntries.length} more`
+          : '- collapse';
+      };
+      topToggle.addEventListener('click', () => {
+        toggle(hiddenContainer.style.display !== 'none');
+      });
+      bottomCollapse.addEventListener('click', () => {
+        toggle(true);
+      });
     }
   }
 
@@ -238,7 +312,7 @@ async function navigateAndHighlight(entry: IndexEntry) {
 let statusEl: HTMLElement | null = null;
 
 async function triggerIndex(force = false) {
-  console.log(`[ssb:ui] triggerIndex called, isIndexed=${isIndexed}, force=${force}`);
+  console.debug(`[ssb:ui] triggerIndex called, isIndexed=${isIndexed}, force=${force}`);
   if (isIndexed && !force) return;
   if (statusEl) {
     statusEl.textContent = force ? 'Re-crawling...' : 'Indexing...';
@@ -250,7 +324,7 @@ async function triggerIndex(force = false) {
       if (statusEl) statusEl.textContent = msg;
     }, force);
     isIndexed = true;
-    console.log(`[ssb:ui] index built: ${index.length} entries`);
+    console.debug(`[ssb:ui] index built: ${index.length} entries`);
     if (statusEl) {
       statusEl.textContent = `${index.length} items indexed`;
       setTimeout(() => {
@@ -281,7 +355,7 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 function applySearch(query: string) {
   activeQuery = query;
-  console.log(`[ssb:ui] applySearch: query="${query}", isIndexed=${isIndexed}, indexSize=${index.length}`);
+  console.debug(`[ssb:ui] applySearch: query="${query}", isIndexed=${isIndexed}, indexSize=${index.length}`);
 
   if (!query.trim()) {
     hideResults();
@@ -296,13 +370,8 @@ function applySearch(query: string) {
 
   const results = search(query);
   const groups = groupByMenu(results);
-  console.log(`[ssb:ui] applySearch: ${results.length} results, ${groups.length} groups`);
+  console.debug(`[ssb:ui] applySearch: ${results.length} results, ${groups.length} groups`);
   renderResults(groups);
-
-  // Select first result visually but do NOT auto-navigate.
-  if (flatItems.length > 0) {
-    updateSelection(0);
-  }
 }
 
 // ─── DOM ───
