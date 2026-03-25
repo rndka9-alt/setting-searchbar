@@ -1,6 +1,7 @@
 import type { IndexEntry } from './types';
 import { buildIndex } from './indexer';
 import { navigateTo, clearHighlights } from './navigator';
+import { searchIndex } from './search';
 
 let index: IndexEntry[] = [];
 let isIndexed = false;
@@ -109,6 +110,15 @@ export function injectStyles() {
       color: var(--risu-theme-textcolor2);
       text-align: center;
     }
+
+    .ssb-input::placeholder {
+      color: var(--risu-theme-textcolor2);
+    }
+
+    .ssb-icon {
+      display: flex; align-items: center; flex-shrink: 0;
+      color: var(--risu-theme-textcolor2);
+    }
   `;
   document.head.appendChild(style);
 }
@@ -116,35 +126,7 @@ export function injectStyles() {
 // ─── Search logic ───
 
 function search(query: string): IndexEntry[] {
-  if (!query.trim()) return [];
-  const q = query.toLowerCase();
-  const tokens = q.split(/\s+/).filter(Boolean);
-
-  const scored: { entry: IndexEntry; score: number }[] = [];
-
-  for (const entry of index) {
-    const display = entry.displayText.toLowerCase();
-    const full = entry.searchText.toLowerCase();
-    let score = 0;
-
-    if (display.includes(q)) score += 100;
-    if (full.includes(q)) score += 50;
-
-    for (const tok of tokens) {
-      if (display.includes(tok)) score += 20;
-      if (full.includes(tok)) score += 10;
-    }
-
-    const path = `${entry.menuLabel} ${entry.subLabel}`.toLowerCase();
-    for (const tok of tokens) {
-      if (path.includes(tok)) score += 5;
-    }
-
-    if (score > 0) scored.push({ entry, score });
-  }
-
-  scored.sort((a, b) => b.score - a.score);
-  return scored.map((s) => s.entry);
+  return searchIndex(index, query);
 }
 
 // ─── Grouping ───
@@ -186,7 +168,7 @@ function renderResults(groups: MenuGroup[]) {
 
   if (groups.length === 0) {
     const empty = document.createElement('div');
-    empty.className = 'ssb-empty text-textcolor2';
+    empty.className = 'ssb-empty';
     empty.textContent = 'No results';
     resultsEl.appendChild(empty);
     resultsEl.style.display = 'block';
@@ -196,7 +178,7 @@ function renderResults(groups: MenuGroup[]) {
   for (const group of groups) {
     // Group header
     const header = document.createElement('div');
-    header.className = 'ssb-group-label text-textcolor2';
+    header.className = 'ssb-group-label';
     header.textContent = group.menuLabel;
     resultsEl.appendChild(header);
 
@@ -204,7 +186,7 @@ function renderResults(groups: MenuGroup[]) {
     const visible = group.entries.slice(0, MAX_PER_GROUP);
     for (const entry of visible) {
       const item = document.createElement('div');
-      item.className = 'ssb-item text-textcolor';
+      item.className = 'ssb-item';
 
       const name = document.createElement('span');
       name.textContent = entry.displayText;
@@ -233,7 +215,7 @@ function renderResults(groups: MenuGroup[]) {
 
       for (const entry of hiddenEntries) {
         const item = document.createElement('div');
-        item.className = 'ssb-item text-textcolor';
+        item.className = 'ssb-item';
 
         const name = document.createElement('span');
         name.textContent = entry.displayText;
@@ -257,14 +239,14 @@ function renderResults(groups: MenuGroup[]) {
 
       // Bottom collapse button (inside hidden container, only visible when expanded)
       const bottomCollapse = document.createElement('div');
-      bottomCollapse.className = 'ssb-more ssb-more-toggle text-textcolor2';
+      bottomCollapse.className = 'ssb-more ssb-more-toggle';
       bottomCollapse.textContent = '- collapse';
       hiddenContainer.appendChild(bottomCollapse);
 
       // Top toggle button — placed BEFORE hiddenContainer so it sits
       // between the visible items and the expanded hidden items.
       const topToggle = document.createElement('div');
-      topToggle.className = 'ssb-more ssb-more-toggle text-textcolor2';
+      topToggle.className = 'ssb-more ssb-more-toggle';
       topToggle.textContent = `+${hiddenEntries.length} more`;
       resultsEl.appendChild(topToggle);
       resultsEl.appendChild(hiddenContainer);
@@ -405,12 +387,13 @@ export function createSearchUI(): HTMLElement {
   `;
 
   const icon = document.createElement('span');
-  icon.style.cssText = 'display:flex; align-items:center; opacity:0.5; flex-shrink:0;';
+  icon.className = 'ssb-icon';
   icon.innerHTML = SEARCH_ICON;
 
   const input = document.createElement('input');
   input.type = 'text';
   input.placeholder = 'Search settings...';
+  input.className = 'ssb-input';
   input.style.cssText = `
     flex: 1; border: none; outline: none;
     background: transparent; font-size: 1rem;
@@ -440,7 +423,7 @@ export function createSearchUI(): HTMLElement {
 
   // Status
   const status = document.createElement('div');
-  status.className = 'ssb-status text-textcolor2';
+  status.className = 'ssb-status';
   status.style.display = 'none';
   statusEl = status;
 

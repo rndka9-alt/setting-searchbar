@@ -275,6 +275,53 @@ async function crawlAllTabs(page: Page): Promise<IndexEntry[]> {
         results.push({ display: text, search: text, accordionPath: parentPath });
       });
 
+      // Collect general action buttons (non-accordion, non-submenu).
+      // Blacklist filters out generic UI actions that add noise.
+      const BUTTON_BLACKLIST = new Set([
+        // Korean
+        '삭제', '제거', '지우기', '초기화', '리셋',
+        '저장', '적용', '확인', '취소', '닫기',
+        '추가', '생성', '만들기', '새로 만들기',
+        '편집', '수정', '변경',
+        '복사', '붙여넣기', '복제',
+        '로그인', '로그아웃', '가입',
+        '위로', '아래로', '이전', '다음',
+        '예', '아니오', '네',
+        '접기', '펼치기', '더보기', '전체보기',
+        // English
+        'delete', 'remove', 'clear', 'reset',
+        'save', 'apply', 'ok', 'confirm', 'cancel', 'close', 'done',
+        'add', 'create', 'new',
+        'edit', 'modify', 'change', 'update',
+        'copy', 'paste', 'duplicate',
+        'login', 'logout', 'log in', 'log out', 'sign in', 'sign out',
+        'up', 'down', 'prev', 'next', 'back',
+        'yes', 'no',
+        'collapse', 'expand', 'more', 'show more', 'show all',
+        'export', 'import',
+        'submit', 'send', 'upload', 'download',
+        'select', 'browse', 'open',
+        'undo', 'redo', 'retry',
+      ]);
+
+      root.querySelectorAll('button').forEach((btn) => {
+        // Skip accordion buttons (already collected above)
+        const cls = btn.className;
+        if (cls.includes('hover:bg-selected') && cls.includes('text-lg')) return;
+        // Skip submenu tab buttons
+        if (btn.closest('.flex.rounded-md.border.border-darkborderc')) return;
+
+        const text = btn.textContent?.trim();
+        if (!text || text.length < 2 || seen.has(text)) return;
+        // Skip icon-only buttons (SVG with little/no text)
+        if (btn.querySelector('svg') && text.length < 5) return;
+        // Blacklist check (case-insensitive)
+        if (BUTTON_BLACKLIST.has(text.toLowerCase())) return;
+
+        seen.add(text);
+        results.push({ display: text, search: text, accordionPath: getAccordionPath(btn, root) });
+      });
+
       root.querySelectorAll('h2, h3').forEach((h) => {
         const text = h.textContent?.trim();
         if (text && text.length >= 2 && !seen.has(text)) {

@@ -86,12 +86,10 @@ export function highlightExact(displayText: string): void {
     }
   }
 
-  // Fallback: try accordion buttons
+  // Fallback: try buttons (accordion + general action buttons)
   if (!matched) {
     const buttons = contentWrapper.querySelectorAll<HTMLButtonElement>('button');
     for (const btn of buttons) {
-      const cls = btn.className;
-      if (!cls.includes('hover:bg-selected') || !cls.includes('text-lg')) continue;
       if (btn.textContent?.trim().toLowerCase() === target) {
         matched = btn;
         break;
