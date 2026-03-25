@@ -63,8 +63,8 @@ describe('isAllowed', () => {
       expect(isAllowed('POST', url('/api/set_password'), ORIGIN)).toBe(false);
     });
 
-    it('blocks POST /api/login', () => {
-      expect(isAllowed('POST', url('/api/login'), ORIGIN)).toBe(false);
+    it('allows POST /api/login (auth flow)', () => {
+      expect(isAllowed('POST', url('/api/login'), ORIGIN)).toBe(true);
     });
 
     it('blocks POST /api/account/write', () => {

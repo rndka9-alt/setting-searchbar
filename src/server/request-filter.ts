@@ -10,6 +10,13 @@ export const SAFE_API_PREFIXES = [
   '/sw/share/',
 ];
 
+/** API paths that are safe to POST (authentication flow). */
+export const SAFE_POST_PREFIXES = [
+  '/api/login',
+  '/api/test_auth',
+  '/api/crypto',
+];
+
 /** Static resource patterns (path-based). */
 export const STATIC_PREFIXES = [
   '/assets/',
@@ -33,8 +40,17 @@ export const STATIC_EXTENSIONS = [
  * Unknown requests are blocked by default.
  */
 export function isAllowed(method: string, url: string, targetOrigin: string): boolean {
-  // Non-GET/HEAD/OPTIONS → always block
+  // Non-GET/HEAD/OPTIONS → block unless it's a safe POST
   if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+    if (method === 'POST') {
+      try {
+        const pathname = new URL(url).pathname;
+        const isSameOrigin = url.startsWith(targetOrigin);
+        if (isSameOrigin && SAFE_POST_PREFIXES.some((p) => pathname.startsWith(p))) {
+          return true;
+        }
+      } catch {}
+    }
     return false;
   }
 

@@ -69,23 +69,41 @@ export function highlightExact(displayText: string): void {
   const target = displayText.trim().toLowerCase();
   if (!target) return;
 
+  // Search non-button elements first, then accordion buttons as fallback
   const candidates = contentWrapper.querySelectorAll(
     'h2, h3, span, label, [class*="text-textcolor"]',
   );
 
+  let matched: Element | null = null;
   for (const el of candidates) {
     if ((el as Element).closest('button')) continue;
     if ((el as Element).closest('.flex.rounded-md.border.border-darkborderc')) continue;
     if (el.children.length > 3) continue;
 
-    const text = el.textContent?.trim().toLowerCase() || '';
-    if (text === target) {
-      el.classList.add(HIGHLIGHT_CLASS);
-      el.addEventListener('animationend', () => {
-        el.classList.remove(HIGHLIGHT_CLASS);
-      }, { once: true });
+    if (el.textContent?.trim().toLowerCase() === target) {
+      matched = el;
       break;
     }
+  }
+
+  // Fallback: try accordion buttons
+  if (!matched) {
+    const buttons = contentWrapper.querySelectorAll<HTMLButtonElement>('button');
+    for (const btn of buttons) {
+      const cls = btn.className;
+      if (!cls.includes('hover:bg-selected') || !cls.includes('text-lg')) continue;
+      if (btn.textContent?.trim().toLowerCase() === target) {
+        matched = btn;
+        break;
+      }
+    }
+  }
+
+  if (matched) {
+    matched.classList.add(HIGHLIGHT_CLASS);
+    matched.addEventListener('animationend', () => {
+      matched.classList.remove(HIGHLIGHT_CLASS);
+    }, { once: true });
   }
 }
 

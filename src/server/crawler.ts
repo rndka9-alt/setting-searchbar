@@ -259,6 +259,22 @@ async function crawlAllTabs(page: Page): Promise<IndexEntry[]> {
       const results: { display: string; search: string; accordionPath: string[] }[] = [];
       const seen = new Set<string>();
 
+      // Collect accordion button names as indexable entries.
+      // Their accordionPath contains only PARENT accordions (not themselves),
+      // so the navigator opens parents then highlights the accordion button.
+      root.querySelectorAll('button').forEach((btn) => {
+        const cls = btn.className;
+        if (!cls.includes('hover:bg-selected') || !cls.includes('text-lg')) return;
+        // Skip submenu tab buttons
+        if (btn.closest('.flex.rounded-md.border.border-darkborderc')) return;
+        const text = btn.textContent?.trim();
+        if (!text || text.length < 2 || seen.has(text)) return;
+        seen.add(text);
+        // Parent accordion path (excludes self)
+        const parentPath = getAccordionPath(btn, root);
+        results.push({ display: text, search: text, accordionPath: parentPath });
+      });
+
       root.querySelectorAll('h2, h3').forEach((h) => {
         const text = h.textContent?.trim();
         if (text && text.length >= 2 && !seen.has(text)) {
@@ -292,6 +308,9 @@ async function crawlAllTabs(page: Page): Promise<IndexEntry[]> {
     const menuButtons = getMenuButtons(sidebar);
     if (menuButtons.length === 0) return [];
 
+    const menuLabels = menuButtons.map((b) => b.querySelector('span')?.textContent?.trim() || '(no span)');
+    console.log(`[ssb:crawl] sidebar buttons (${menuButtons.length}): ${menuLabels.join(', ')}`);
+
     // Click first button to ensure content area exists
     menuButtons[0].click();
     await wait(renderWait);
@@ -315,8 +334,12 @@ async function crawlAllTabs(page: Page): Promise<IndexEntry[]> {
       if (!contentWrapper) continue;
 
       const subButtons = getSubmenuButtons(contentWrapper);
+      let tabEntryCount = 0;
 
       if (subButtons.length > 0) {
+        const subLabels = subButtons.map((b) => b.textContent?.trim() || '');
+        console.log(`[ssb:crawl]   [${mi}] "${menuLabel}" — subtabs: ${subLabels.join(', ')}`);
+
         for (let si = 0; si < subButtons.length; si++) {
           subButtons[si].click();
           await wait(renderWait);
@@ -328,7 +351,8 @@ async function crawlAllTabs(page: Page): Promise<IndexEntry[]> {
           await expandAccordions(contentWrapper, renderWait);
 
           const subLabel = subButtons[si].textContent?.trim() || '';
-          for (const l of collectLabels(contentWrapper)) {
+          const labels = collectLabels(contentWrapper);
+          for (const l of labels) {
             entries.push({
               displayText: l.display,
               searchText: l.search,
@@ -339,12 +363,17 @@ async function crawlAllTabs(page: Page): Promise<IndexEntry[]> {
               accordionPath: l.accordionPath,
             });
           }
+          tabEntryCount += labels.length;
+          console.log(`[ssb:crawl]     [${mi}.${si}] "${subLabel}" → ${labels.length} entries`);
         }
       } else {
+        console.log(`[ssb:crawl]   [${mi}] "${menuLabel}" — no subtabs`);
+
         // Expand all accordions so their content is in the DOM
         await expandAccordions(contentWrapper, renderWait);
 
-        for (const l of collectLabels(contentWrapper)) {
+        const labels = collectLabels(contentWrapper);
+        for (const l of labels) {
           entries.push({
             displayText: l.display,
             searchText: l.search,
@@ -354,6 +383,14 @@ async function crawlAllTabs(page: Page): Promise<IndexEntry[]> {
             subLabel: '',
             accordionPath: l.accordionPath,
           });
+        }
+        tabEntryCount = labels.length;
+        console.log(`[ssb:crawl]     → ${labels.length} entries`);
+
+        // Dump DOM snapshot for tabs with few entries (diagnostic)
+        if (labels.length <= 1) {
+          const snapshot = contentWrapper.innerHTML.slice(0, 2000);
+          console.log(`[ssb:crawl]     DOM snapshot (${menuLabel}): ${snapshot}`);
         }
       }
     }
@@ -387,6 +424,14 @@ export async function crawlSettingsIndex(
   }, CRAWL_TIMEOUT_MS);
 
   try {
+    // Forward browser console to server logs for diagnostics
+    page.on('console', (msg) => {
+      const text = msg.text();
+      if (text.startsWith('[ssb:crawl]')) {
+        console.log(`${TAG} browser: ${text}`);
+      }
+    });
+
     const targetOrigin = crawlerTarget.origin;
     await setupRouteInterception(page, risuAuth, targetOrigin, requestLog);
 
