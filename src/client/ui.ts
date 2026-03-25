@@ -24,9 +24,9 @@ function injectStyles() {
     }
 
     .ssb-highlight {
-      background-color: rgba(137, 180, 250, 0.18) !important;
+      background-color: var(--risu-theme-selected) !important;
       border-radius: 4px;
-      outline: 1px solid rgba(137, 180, 250, 0.3);
+      outline: 1px solid var(--risu-theme-borderc);
       outline-offset: 2px;
     }
 
@@ -37,37 +37,43 @@ function injectStyles() {
     .ssb-group-label {
       padding: 8px 12px 2px;
       font-size: 11px; font-weight: 600;
-      opacity: 0.5; text-transform: uppercase;
+      color: var(--risu-theme-textcolor2);
+      text-transform: uppercase;
       letter-spacing: 0.05em;
     }
 
     .ssb-item {
       padding: 6px 12px 6px 20px;
       font-size: 13px;
+      color: var(--risu-theme-textcolor);
       cursor: pointer;
       display: flex; align-items: baseline; gap: 8px;
       transition: background-color 0.1s;
     }
     .ssb-item:hover,
     .ssb-item-selected {
-      background-color: var(--dark-button-color, #313244);
+      background-color: var(--risu-theme-selected);
     }
 
     .ssb-item-sub {
-      opacity: 0.4; font-size: 11px; flex-shrink: 0;
+      color: var(--risu-theme-textcolor2);
+      font-size: 11px; flex-shrink: 0;
     }
 
     .ssb-more {
-      padding: 2px 12px 6px 20px; font-size: 11px; opacity: 0.3;
+      padding: 2px 12px 6px 20px; font-size: 11px;
+      color: var(--risu-theme-textcolor2);
     }
 
     .ssb-status {
       font-size: 11px; padding: 8px 12px 0;
-      opacity: 0.5;
+      color: var(--risu-theme-textcolor2);
     }
 
     .ssb-empty {
-      padding: 16px; font-size: 13px; opacity: 0.4; text-align: center;
+      padding: 16px; font-size: 13px;
+      color: var(--risu-theme-textcolor2);
+      text-align: center;
     }
   `;
   document.head.appendChild(style);
@@ -315,10 +321,10 @@ export function createSearchUI(): HTMLElement {
   const inputRow = document.createElement('div');
   inputRow.style.cssText = `
     display: flex; align-items: center; gap: 6px;
-    border: 1px solid var(--dark-border-color, #313244);
+    border: 1px solid var(--risu-theme-darkborderc);
     border-radius: 8px; padding: 6px 10px;
-    margin: 8px 12px 0;
-    background: var(--bg-color, #1e1e2e);
+    margin: 8px 12px 0 0;
+    background: var(--risu-theme-darkbg);
   `;
 
   const icon = document.createElement('span');
@@ -331,7 +337,7 @@ export function createSearchUI(): HTMLElement {
   input.style.cssText = `
     flex: 1; border: none; outline: none;
     background: transparent; font-size: 13px;
-    color: var(--text-color, #cdd6f4); min-width: 0;
+    color: var(--risu-theme-textcolor); min-width: 0;
   `;
 
   const clearBtn = document.createElement('button');
@@ -339,7 +345,7 @@ export function createSearchUI(): HTMLElement {
     display: none; align-items: center; justify-content: center;
     border: none; background: none; cursor: pointer;
     opacity: 0.4; padding: 2px; flex-shrink: 0;
-    color: var(--text-color, #cdd6f4);
+    color: var(--risu-theme-textcolor);
   `;
   clearBtn.innerHTML = CLEAR_ICON;
 
@@ -349,7 +355,7 @@ export function createSearchUI(): HTMLElement {
     display: flex; align-items: center; justify-content: center;
     border: none; background: none; cursor: pointer;
     opacity: 0.4; padding: 2px; flex-shrink: 0;
-    color: var(--text-color, #cdd6f4);
+    color: var(--risu-theme-textcolor);
   `;
   refreshBtn.innerHTML = REFRESH_ICON;
 
