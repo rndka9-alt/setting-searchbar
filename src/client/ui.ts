@@ -225,6 +225,7 @@ async function navigateAndHighlight(entry: IndexEntry) {
 let statusEl: HTMLElement | null = null;
 
 async function triggerIndex() {
+  console.log(`[ssb:ui] triggerIndex called, isIndexed=${isIndexed}`);
   if (isIndexed) return;
   if (statusEl) {
     statusEl.textContent = 'Indexing...';
@@ -236,6 +237,7 @@ async function triggerIndex() {
       if (statusEl) statusEl.textContent = msg;
     });
     isIndexed = true;
+    console.log(`[ssb:ui] index built: ${index.length} entries`);
     if (statusEl) {
       statusEl.textContent = `${index.length} items indexed`;
       setTimeout(() => {
@@ -243,7 +245,7 @@ async function triggerIndex() {
       }, 1200);
     }
   } catch (err) {
-    console.error('[setting-searchbar] index error:', err);
+    console.error('[ssb:ui] index error:', err);
     if (statusEl) {
       statusEl.textContent = 'Index failed';
       setTimeout(() => {
@@ -267,6 +269,7 @@ let navigateTimer: ReturnType<typeof setTimeout> | null = null;
 
 function applySearch(query: string) {
   activeQuery = query;
+  console.log(`[ssb:ui] applySearch: query="${query}", isIndexed=${isIndexed}, indexSize=${index.length}`);
 
   if (!query.trim()) {
     hideResults();
@@ -274,10 +277,14 @@ function applySearch(query: string) {
     return;
   }
 
-  if (!isIndexed) return;
+  if (!isIndexed) {
+    console.warn(`[ssb:ui] applySearch: skipped — not indexed yet`);
+    return;
+  }
 
   const results = search(query);
   const groups = groupByMenu(results);
+  console.log(`[ssb:ui] applySearch: ${results.length} results, ${groups.length} groups`);
   renderResults(groups);
 
   // Auto-navigate to first result
