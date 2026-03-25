@@ -4,6 +4,10 @@ import { isAllowed } from './request-filter.js';
 const TAG = '[ssb:crawler]';
 const CRAWL_TIMEOUT_MS = 60_000;
 const RENDER_WAIT_MS = 200;
+const MAX_DIALOG_DISMISS_ATTEMPTS = 10;
+const DIALOG_DISMISS_WAIT_MS = 500;
+const DIALOG_BUTTON_TEXTS = ['NO', 'OK', 'CANCEL', 'CLOSE', '닫기', '아니오', '취소', '확인'];
+const POST_PRELOAD_WAIT_MS = 3000;
 
 interface IndexEntry {
   displayText: string;
@@ -12,7 +16,6 @@ interface IndexEntry {
   menuLabel: string;
   subIdx: number;
   subLabel: string;
-  elementIdx: number;
 }
 
 // ─── Browser pool (reuse across crawls) ───
@@ -75,44 +78,56 @@ function setupRouteInterception(
 async function dismissDialogsAndOpenSidebar(page: Page): Promise<void> {
   // Dismiss any confirmation dialogs (e.g., plugin permission prompts)
   // Keep dismissing until no more dialogs appear
-  for (let i = 0; i < 10; i++) {
-    // Look for YES/NO style confirm dialogs
-    const noBtn = await page.evaluate(() => {
+  const dialogTexts = DIALOG_BUTTON_TEXTS;
+  for (let i = 0; i < MAX_DIALOG_DISMISS_ATTEMPTS; i++) {
+    const dismissed = await page.evaluate((texts: string[]) => {
       const buttons = document.querySelectorAll('button');
       for (const btn of buttons) {
         const text = btn.textContent?.trim().toUpperCase();
-        if (text === 'NO' || text === 'OK' || text === 'CANCEL') {
+        if (text && texts.includes(text)) {
           btn.click();
-          return true;
+          return text;
         }
       }
-      return false;
-    });
-    if (noBtn) {
-      console.log(`${TAG} dismissed a dialog`);
-      await page.waitForTimeout(500);
+      return null;
+    }, dialogTexts);
+    if (dismissed) {
+      console.log(`${TAG} dismissed dialog button: "${dismissed}"`);
+      await page.waitForTimeout(DIALOG_DISMISS_WAIT_MS);
     } else {
       break;
     }
   }
 
-  // Open sidebar if collapsed — click the top-left arrow toggle
+  // Open sidebar if collapsed — click the top-left toggle button.
   // First, click the page body to ensure focus
   await page.click('body');
   await page.waitForTimeout(200);
 
-  // Try the arrow button (top-left, typically first button with SVG)
+  // Strategy 1: find a small button containing an SVG (arrow icon) in the top-left area
+  // Strategy 2 (fallback): positional heuristic for buttons near the top-left corner
   const sidebarToggle = await page.evaluate(() => {
-    // Look for a small button that contains an arrow SVG
     const buttons = document.querySelectorAll('button');
+
+    // Prefer a button with an SVG child near the top-left
     for (const btn of buttons) {
+      if (!btn.querySelector('svg')) continue;
       const rect = btn.getBoundingClientRect();
-      // Top-left corner, small button
-      if (rect.left < 60 && rect.top < 60 && rect.width < 50) {
+      if (rect.left < 80 && rect.top < 80 && rect.width < 60 && rect.height < 60) {
         btn.click();
-        return `clicked: ${rect.left},${rect.top} ${rect.width}x${rect.height}`;
+        return `svg-button: ${rect.left},${rect.top} ${rect.width}x${rect.height}`;
       }
     }
+
+    // Fallback: any small button in top-left corner
+    for (const btn of buttons) {
+      const rect = btn.getBoundingClientRect();
+      if (rect.left < 60 && rect.top < 60 && rect.width < 50) {
+        btn.click();
+        return `positional-fallback: ${rect.left},${rect.top} ${rect.width}x${rect.height}`;
+      }
+    }
+
     return null;
   });
   if (sidebarToggle) {
@@ -133,15 +148,16 @@ async function openSettings(page: Page): Promise<boolean> {
   console.log(`${TAG} after dialog dismissal: buttons=${buttonCount}`);
   console.log(`${TAG} body: ${bodySnippet.slice(0, 200)}`);
   try {
-    await page.screenshot({ path: '/tmp/ssb-crawl-debug.png', fullPage: true });
-    console.log(`${TAG} screenshot saved`);
+    const debugPath = process.env.SSB_DEBUG_DIR || '/tmp';
+    await page.screenshot({ path: `${debugPath}/ssb-crawl-debug.png`, fullPage: true });
+    console.log(`${TAG} screenshot saved to ${debugPath}/ssb-crawl-debug.png`);
   } catch {}
 
   // Use Ctrl+S keyboard shortcut (RisuAI default hotkey for settings)
   await page.keyboard.press('Control+s');
   try {
     await page.waitForSelector('.rs-setting-cont-3', { timeout: 5000 });
-    console.log(`${TAG} settings opened via Ctrl+,`);
+    console.log(`${TAG} settings opened via Ctrl+S`);
     return true;
   } catch {
     // Fallback: find button by text
@@ -189,6 +205,35 @@ async function crawlAllTabs(page: Page): Promise<IndexEntry[]> {
       );
       if (!container) return [];
       return [...container.querySelectorAll<HTMLButtonElement>('button')];
+    }
+
+    /**
+     * Expand all closed accordions in the content area.
+     * Accordion buttons are identified by `hover:bg-selected` + `text-lg` classes.
+     * Handles nested accordions by iterating up to `maxDepth` times.
+     */
+    async function expandAccordions(contentWrapper: Element, renderWait: number, maxDepth = 3): Promise<void> {
+      for (let depth = 0; depth < maxDepth; depth++) {
+        const buttons = contentWrapper.querySelectorAll<HTMLButtonElement>('button');
+        const closedAccordions = [...buttons].filter((btn) => {
+          // Skip submenu tab buttons
+          if (btn.closest('.flex.rounded-md.border.border-darkborderc')) return false;
+          // Skip sidebar buttons
+          if (btn.closest('.rs-setting-cont-3')) return false;
+          // Accordion buttons have these Tailwind classes
+          const cls = btn.className;
+          return cls.includes('hover:bg-selected') && cls.includes('text-lg') && !btn.classList.contains('bg-selected');
+        });
+
+        if (closedAccordions.length === 0) break;
+
+        // Batch: click all closed accordions at once, then wait once.
+        // Svelte batches DOM updates within the same synchronous block.
+        for (const accBtn of closedAccordions) {
+          accBtn.click();
+        }
+        await wait(renderWait);
+      }
     }
 
     function collectLabels(root: Element): { display: string; search: string }[] {
@@ -260,6 +305,9 @@ async function crawlAllTabs(page: Page): Promise<IndexEntry[]> {
           contentWrapper = document.querySelector('.rs-setting-cont-4');
           if (!contentWrapper) break;
 
+          // Expand all accordions so their content is in the DOM
+          await expandAccordions(contentWrapper, renderWait);
+
           const subLabel = subButtons[si].textContent?.trim() || '';
           for (const l of collectLabels(contentWrapper)) {
             entries.push({
@@ -269,11 +317,13 @@ async function crawlAllTabs(page: Page): Promise<IndexEntry[]> {
               menuLabel,
               subIdx: si,
               subLabel,
-              elementIdx: 0,
             });
           }
         }
       } else {
+        // Expand all accordions so their content is in the DOM
+        await expandAccordions(contentWrapper, renderWait);
+
         for (const l of collectLabels(contentWrapper)) {
           entries.push({
             displayText: l.display,
@@ -282,7 +332,6 @@ async function crawlAllTabs(page: Page): Promise<IndexEntry[]> {
             menuLabel,
             subIdx: -1,
             subLabel: '',
-            elementIdx: 0,
           });
         }
       }
@@ -331,7 +380,7 @@ export async function crawlSettingsIndex(
     await page.waitForSelector('#preloading', { state: 'hidden', timeout: 30_000 }).catch(() => {
       console.warn(`${TAG} preloading indicator didn't disappear, continuing anyway`);
     });
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(POST_PRELOAD_WAIT_MS);
 
     // Open settings (handles dialogs + sidebar internally)
     const opened = await openSettings(page);

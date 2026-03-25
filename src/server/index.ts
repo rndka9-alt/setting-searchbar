@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PORT, UPSTREAM, CRAWLER_TARGET, LOG_LEVEL } from './config.js';
 import { injectScriptTag } from './inject-script-tag.js';
-import { crawlSettingsIndex } from './crawler.js';
+import { crawlSettingsIndex, type CrawlResult } from './crawler.js';
 
 const clientJs = fs.readFileSync(
   path.join(import.meta.dirname, 'client.js'),
@@ -57,6 +57,8 @@ function proxyRequest(
 }
 
 let crawlInProgress = false;
+let cachedResult: CrawlResult | null = null;
+let cachedAt = 0;
 
 const server = http.createServer((req, res) => {
   const url = req.url || '';
@@ -68,6 +70,17 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ error: 'Missing risu-auth header' }));
       return;
     }
+
+    const forceCrawl = req.headers['x-ssb-force-crawl'] === 'true';
+
+    // Return cached result if available and not forced
+    if (!forceCrawl && cachedResult && cachedResult.entries.length > 0) {
+      log('debug', `returning cached index (${cachedResult.entries.length} entries, cached ${Math.round((Date.now() - cachedAt) / 1000)}s ago)`);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(cachedResult));
+      return;
+    }
+
     if (crawlInProgress) {
       res.writeHead(429, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: 'Crawl already in progress' }));
@@ -76,6 +89,8 @@ const server = http.createServer((req, res) => {
     crawlInProgress = true;
     crawlSettingsIndex(CRAWLER_TARGET, risuAuth)
       .then((result) => {
+        cachedResult = result;
+        cachedAt = Date.now();
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify(result));
       })

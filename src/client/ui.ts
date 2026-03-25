@@ -230,18 +230,18 @@ async function navigateAndHighlight(entry: IndexEntry) {
 
 let statusEl: HTMLElement | null = null;
 
-async function triggerIndex() {
-  console.log(`[ssb:ui] triggerIndex called, isIndexed=${isIndexed}`);
-  if (isIndexed) return;
+async function triggerIndex(force = false) {
+  console.log(`[ssb:ui] triggerIndex called, isIndexed=${isIndexed}, force=${force}`);
+  if (isIndexed && !force) return;
   if (statusEl) {
-    statusEl.textContent = 'Indexing...';
+    statusEl.textContent = force ? 'Re-crawling...' : 'Indexing...';
     statusEl.style.display = 'block';
   }
 
   try {
     index = await buildIndex((msg) => {
       if (statusEl) statusEl.textContent = msg;
-    });
+    }, force);
     isIndexed = true;
     console.log(`[ssb:ui] index built: ${index.length} entries`);
     if (statusEl) {
@@ -264,7 +264,7 @@ async function triggerIndex() {
 async function forceReindex() {
   isIndexed = false;
   index = [];
-  await triggerIndex();
+  await triggerIndex(true);
   if (activeQuery) applySearch(activeQuery);
 }
 

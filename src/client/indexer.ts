@@ -11,10 +11,14 @@ export type IndexState = {
 /**
  * Request the server to crawl settings via headless Playwright.
  * Interface is identical to the old client-side DOM crawling version:
- * `buildIndex(onProgress?) → Promise<IndexEntry[]>`
+ * `buildIndex(onProgress?, force?) → Promise<IndexEntry[]>`
+ *
+ * When `force` is false (default), the server returns a cached result if available.
+ * When `force` is true, the server re-crawls from scratch.
  */
 export async function buildIndex(
   onProgress?: (msg: string) => void,
+  force = false,
 ): Promise<IndexEntry[]> {
   const risuAuth = getCapturedAuth();
   if (!risuAuth) {
@@ -23,13 +27,17 @@ export async function buildIndex(
     return [];
   }
 
-  console.log(`${TAG} requesting server-side crawl`);
-  onProgress?.('Crawling settings (server)...');
+  console.log(`${TAG} requesting server-side crawl (force=${force})`);
+  onProgress?.(force ? 'Re-crawling settings...' : 'Loading settings index...');
 
   try {
+    const headers: Record<string, string> = { 'risu-auth': risuAuth };
+    if (force) {
+      headers['x-ssb-force-crawl'] = 'true';
+    }
     const resp = await fetch('/setting-searchbar/build-index', {
       method: 'POST',
-      headers: { 'risu-auth': risuAuth },
+      headers,
     });
 
     if (resp.status === 429) {

@@ -11,6 +11,4 @@ export interface IndexEntry {
   subIdx: number;
   /** Submenu tab label (e.g., "Parameters") */
   subLabel: string;
-  /** Index of the element among its siblings in the content area */
-  elementIdx: number;
 }
