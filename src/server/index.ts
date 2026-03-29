@@ -4,6 +4,7 @@ import path from 'node:path';
 import { PORT, UPSTREAM, CRAWLER_TARGET, LOG_LEVEL } from './config.js';
 import { injectScriptTag } from './inject-script-tag.js';
 import { crawlSettingsIndex, type CrawlResult } from './crawler.js';
+import { initAuth, issueToken } from './auth.js';
 
 const clientJs = fs.readFileSync(
   path.join(import.meta.dirname, 'client.js'),
@@ -87,7 +88,9 @@ const server = http.createServer((req, res) => {
       return;
     }
     crawlInProgress = true;
-    crawlSettingsIndex(CRAWLER_TARGET, risuAuth)
+    // 자체 등록 토큰 우선, 없으면 클라이언트 토큰 폴백
+    const authForCrawl = issueToken().then((token) => token ?? risuAuth);
+    authForCrawl.then((token) => crawlSettingsIndex(CRAWLER_TARGET, token))
       .then((result) => {
         // Don't overwrite good cache with empty results (auth failure etc.)
         if (result.entries.length > 0) {
@@ -153,4 +156,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   log('info', `listening on :${PORT}, upstream ${UPSTREAM.href}`);
+  initAuth().catch((err) => {
+    log('error', `auth init failed: ${err instanceof Error ? err.message : err}`);
+  });
 });
